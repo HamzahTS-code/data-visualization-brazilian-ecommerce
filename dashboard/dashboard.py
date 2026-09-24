@@ -4,6 +4,12 @@ import matplotlib.ticker as ticker
 import seaborn as sns
 import streamlit as st
 from babel.numbers import format_currency
+import os
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+csv_path = os.path.join(BASE_DIR, "all_data.csv")
+
+all_df = pd.read_csv(csv_path)
 
 sns.set(style="dark")
 
