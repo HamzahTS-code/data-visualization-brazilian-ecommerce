@@ -69,7 +69,7 @@ def create_rfm_df(df):
 
     return rfm_df
 
-all_df = pd.read_csv("all_data.csv")
+# all_df = pd.read_csv("all_data.csv")
 
 datetime_columns = [
     "order_purchase_timestamp",
