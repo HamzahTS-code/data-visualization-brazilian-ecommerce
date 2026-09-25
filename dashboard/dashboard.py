@@ -69,7 +69,7 @@ def create_rfm_df(df):
 
     return rfm_df
 
-#all_df = pd.read_csv("all_data.csv")
+# all_df = pd.read_csv("all_data.csv")
 
 datetime_columns = [
     "order_purchase_timestamp",
@@ -89,7 +89,8 @@ min_date = all_df["order_purchase_timestamp"].min()
 max_date = all_df["order_purchase_timestamp"].max()
 
 with st.sidebar:
-    st.image("logo.png")
+    image_path = os.path.join(BASE_DIR, "logo.png")
+    st.image(image_path)
 
     start_date, end_date = st.date_input(
         label="Dataset Date Range",
