@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import seaborn as sns
@@ -67,7 +68,71 @@ def create_rfm_df(df):
     rfm_df["recency"] = rfm_df["max_order_timestamp"].apply(lambda x: (recent_date - x).days)
     rfm_df.drop("max_order_timestamp", axis=1, inplace=True)
 
+    # --- RFM scoring & segmentasi (logic dari rfm.py) ---
+    rfm_df["r_rank"] = rfm_df["recency"].rank(ascending=False)
+    rfm_df["f_rank"] = rfm_df["frequency"].rank(ascending=True)
+    rfm_df["m_rank"] = rfm_df["monetary"].rank(ascending=True)
+
+    rfm_df["r_rank_norm"] = (rfm_df["r_rank"] / rfm_df["r_rank"].max()) * 100
+    rfm_df["f_rank_norm"] = (rfm_df["f_rank"] / rfm_df["f_rank"].max()) * 100
+    rfm_df["m_rank_norm"] = (rfm_df["m_rank"] / rfm_df["m_rank"].max()) * 100
+
+    rfm_df.drop(columns=["r_rank", "f_rank", "m_rank"], inplace=True)
+
+    rfm_df["RFM_score"] = (
+        0.15 * rfm_df["r_rank_norm"]
+        + 0.28 * rfm_df["f_rank_norm"]
+        + 0.57 * rfm_df["m_rank_norm"]
+    )
+    rfm_df["RFM_score"] *= 0.05
+    rfm_df = rfm_df.round(2)
+
+    rfm_df["customer_segment"] = np.where(
+        rfm_df["RFM_score"] > 4.5, "Top customers", np.where(
+            rfm_df["RFM_score"] > 4, "High value customer", np.where(
+                rfm_df["RFM_score"] > 3, "Medium value customer", np.where(
+                    rfm_df["RFM_score"] > 1.6, "Low value customers", "lost customers"
+                )
+            )
+        )
+    )
+
     return rfm_df
+
+
+def create_customer_segment_df(rfm_df):
+    customer_segment_df = rfm_df.groupby(by="customer_segment", as_index=False).customer_id.nunique()
+    customer_segment_df.rename(columns={"customer_id": "customer_count"}, inplace=True)
+
+    customer_segment_df["percentage"] = round(
+        (customer_segment_df["customer_count"] / customer_segment_df["customer_count"].sum()) * 100, 2
+    )
+
+    customer_segment_df["customer_segment"] = pd.Categorical(
+        customer_segment_df["customer_segment"],
+        ["lost customers", "Low value customers", "Medium value customer",
+         "High value customer", "Top customers"],
+    )
+    customer_segment_df.sort_values(by="customer_segment", inplace=True)
+
+    return customer_segment_df
+
+
+def create_segment_revenue_df(rfm_df):
+    segment_revenue_df = rfm_df.groupby(by="customer_segment", as_index=False)["monetary"].sum()
+    segment_revenue_df.rename(columns={"monetary": "revenue"}, inplace=True)
+    segment_revenue_df["revenue_pct"] = round(
+        (segment_revenue_df["revenue"] / segment_revenue_df["revenue"].sum()) * 100, 2
+    )
+
+    segment_revenue_df["customer_segment"] = pd.Categorical(
+        segment_revenue_df["customer_segment"],
+        ["lost customers", "Low value customers", "Medium value customer",
+         "High value customer", "Top customers"],
+    )
+    segment_revenue_df.sort_values(by="customer_segment", inplace=True)
+
+    return segment_revenue_df
 
 # all_df = pd.read_csv("all_data.csv")
 
@@ -110,6 +175,8 @@ byorderstatus_df = create_byorderstatus_df(main_df)
 bystate_df = create_bystate_df(main_df)
 bysellercity_df = create_bysellercity_df(main_df)
 rfm_df = create_rfm_df(main_df)
+customer_segment_df = create_customer_segment_df(rfm_df)
+segment_revenue_df = create_segment_revenue_df(rfm_df)
 
 st.header("Olist Brazilian E-Commerce Public Dataset Dashboard :sparkles:")
 
@@ -329,6 +396,73 @@ ax[2].tick_params(axis="x", labelsize=0)
 ax[2].tick_params(axis="y", labelsize=30)
 
 st.pyplot(fig)
+
+# --- Customer Segmentation (RFM Score) ---
+st.subheader("Customer Segmentation Based on RFM Score")
+
+lost_low = customer_segment_df.loc[
+    customer_segment_df["customer_segment"].isin(["lost customers", "Low value customers"]),
+    "customer_count",
+].sum()
+total_customers = customer_segment_df["customer_count"].sum()
+lost_low_pct = round((lost_low / total_customers) * 100, 2)
+
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    st.metric("Total Customers", value=f"{total_customers:,}")
+
+with col2:
+    st.metric("Lost + Low Value Customers", value=f"{lost_low:,}")
+
+with col3:
+    st.metric("% Lost + Low Value", value=f"{lost_low_pct}%")
+
+col1, col2 = st.columns(2)
+
+with col1:
+    fig, ax = plt.subplots(figsize=(10, 6))
+    colors_ = ["#72BCD4", "#72BCD4", "#D3D3D3", "#D3D3D3", "#D3D3D3"]
+    sns.barplot(
+        x="customer_count",
+        y="customer_segment",
+        data=customer_segment_df.sort_values(by="customer_segment", ascending=False),
+        hue="customer_segment",
+        palette=colors_,
+        legend=False,
+        ax=ax,
+    )
+    ax.set_title("Number of Customers per Segment", loc="center", fontsize=18)
+    ax.set_ylabel(None)
+    ax.set_xlabel(None)
+    ax.tick_params(axis="y", labelsize=12)
+    st.pyplot(fig)
+
+with col2:
+    fig, ax = plt.subplots(figsize=(10, 6))
+    colors_ = ["#D3D3D3", "#D3D3D3", "#D3D3D3", "#D3D3D3", "#90CAF9"]
+    sns.barplot(
+        x="revenue",
+        y="customer_segment",
+        data=segment_revenue_df.sort_values(by="customer_segment", ascending=False),
+        hue="customer_segment",
+        palette=colors_,
+        legend=False,
+        ax=ax,
+    )
+    ax.set_title("Revenue Contribution per Segment", loc="center", fontsize=18)
+    ax.set_ylabel(None)
+    ax.set_xlabel("Total Revenue (R$)")
+    ax.tick_params(axis="y", labelsize=12)
+    formatter = ticker.FuncFormatter(lambda x, _: f"{x:,.0f}")
+    ax.xaxis.set_major_formatter(formatter)
+    st.pyplot(fig)
+
+st.caption(
+    "Catatan: RFM_score dan customer_segment dihitung ulang mengikuti rentang tanggal "
+    "yang dipilih di sidebar. Persentase 'Lost + Low Value' di atas adalah kondisi "
+    "saat ini (baseline), bukan hasil program reaktivasi."
+)
 
 st.subheader("Delivery Time to Customer")
 
